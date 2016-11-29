@@ -232,11 +232,16 @@ public class Sistema {
     Response response = new Response();
     ByteArrayOutputStream dataOut = null;
     File file = null;
-    
+    boolean musicaComprada = false;
+
     try {
+  
       out.writeObject(clientRequest);
       out.flush();
       
+      response = (Response) in.readObject(); // checa se a musica ja foi comprada
+      musicaComprada = response.getData()[0] == 1;
+          
       dataOut = new ByteArrayOutputStream();
       
       while (true) {
@@ -261,10 +266,14 @@ public class Sistema {
         System.out.println(
             "[ERRO] " + (response != null ? response.getErrorMessage() : "Erro desconhecido."));             
       } else {
-        System.out.println("Reproduzindo a música por " + TEMPO_REPRODUCAO + " segundos. Use o comando 'stop' se quiser parar de tocar.");
-        
+    	if (musicaComprada) {
+    		System.out.println("Reproduzindo a música. Use o comando 'stop' se quiser parar de tocar.");
+    	} else {
+    		System.out.println("Reproduzindo a música " + "por " + TEMPO_REPRODUCAO + " segundos. Use o comando 'stop' se quiser parar de tocar.");
+    		
+    	}
         stopMusica();
-        audioPlayer = new AudioPlayer(new ByteArrayInputStream(dataOut.toByteArray()), TEMPO_REPRODUCAO*1000);
+        audioPlayer = new AudioPlayer(new ByteArrayInputStream(dataOut.toByteArray()), musicaComprada ? -1 : TEMPO_REPRODUCAO*1000);
         audioPlayer.start();
       }
     }
@@ -480,25 +489,32 @@ public class Sistema {
   }
   
   @SuppressWarnings("unchecked")
+  private List<Musica> fetchMusicasCompradas() {
+	  ClientRequest clientRequest = new ClientRequest();
+	  clientRequest.setTipo(ClientRequest.Tipo.LISTAR_COMPRADOS);
+	  clientRequest.setLogin(login);
+	  conectar();
+	  List<Musica> response = new ArrayList<>();
+	  try {
+	    out.writeObject(clientRequest);
+	    out.flush();
+	    response =  (List<Musica>) in.readObject();
+	  } catch (IOException e) {
+	    e.printStackTrace();
+	  } catch (ClassNotFoundException e) {
+	    e.printStackTrace();
+	  } finally {
+	    desconectar();
+	  }
+	  
+	  return response;
+  }
+  
   private void listarMusicasCompradas() {
     System.out.println("Obtendo a lista de músicas já compradas...");
-    ClientRequest clientRequest = new ClientRequest();
-    clientRequest.setTipo(ClientRequest.Tipo.LISTAR_COMPRADOS);
-    clientRequest.setLogin(login);
-    conectar();
-    List<Musica> response = new ArrayList<>();
-    try {
-      out.writeObject(clientRequest);
-      out.flush();
-      response =  (List<Musica>) in.readObject();
-    } catch (IOException e) {
-      e.printStackTrace();
-    } catch (ClassNotFoundException e) {
-      e.printStackTrace();
-    } finally {
-      desconectar();
-    }
 
+    List<Musica> response = fetchMusicasCompradas();
+    
     if (response.isEmpty()) {
       System.out.println("Você ainda não comprou nada.");
       return;
@@ -514,9 +530,10 @@ public class Sistema {
 
     int[] maxLengths = new int[] {
         headers[0].length(),
+        headers[1].length(),
         headers[2].length(),
         headers[3].length(),
-        headers[4].length(),
+        headers[4].length(),        
     };
     
     for (Musica musica : response) {
